@@ -1,0 +1,15 @@
+[submodule "lib/ecbuild"]
+	path = lib/ecbuild
+	url = https://github.com/ecmwf/ecbuild
+[submodule "lib/eccodes"]
+	path = lib/eccodes
+	url = https://github.com/ecmwf/eccodes
+[submodule "lib/eckit"]
+	path = lib/eckit
+	url = https://github.com/ecmwf/eckit
+[submodule "lib/metkit"]
+	path = lib/metkit
+	url = https://github.com/ecmwf/metkit
+[submodule "lib/fdb"]
+	path = lib/fdb
+	url = https://github.com/ecmwf/fdb
