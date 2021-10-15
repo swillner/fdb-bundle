@@ -1,41 +1,83 @@
 cmake_minimum_required(VERSION 3.8)
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/lib/ecbuild/cmake)
-
 project(fdb-bundle)
+
+set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/lib/ecbuild/cmake)
 
 include(ExternalProject)
 
+set(FINAL_DIR ${PROJECT_BINARY_DIR}/final)
+
+set(CMAKE_BUILD_TYPE
+    Profile
+    CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel Profile." FORCE
+)
+
+if(CMAKE_BUILD_TYPE STREQUAL "Profile")
+  set(ADDITIONAL_CFLAGS "-gdwarf -pg -g3 -fno-omit-frame-pointer")
+  set(ADDITIONAL_CMAKE_ARGS
+      -DCMAKE_C_FLAGS=${ADDITIONAL_CFLAGS} -DCMAKE_CXX_FLAGS=${ADDITIONAL_CFLAGS}
+      -DCMAKE_EXE_LINKER_FLAGS=${ADDITIONAL_CFLAGS} -DCMAKE_SHARED_LINKER_FLAGS=${ADDITIONAL_CFLAGS}
+      -DCMAKE_BUILD_TYPE=Debug
+  )
+else()
+  set(ADDITIONAL_CFLAGS "")
+  set(ADDITIONAL_CMAKE_ARGS -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE})
+endif()
+
 externalproject_add(
   eccodes
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/lib/eccodes
-  INSTALL_COMMAND ""
+  SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/eccodes"
+  BINARY_DIR "${PROJECT_BINARY_DIR}/lib/eccodes"
+  INSTALL_DIR "${FINAL_DIR}"
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DENABLE_INSTALL_ECCODES_DEFINITIONS=OFF
+             -DENABLE_INSTALL_ECCODES_SAMPLES=OFF ${ADDITIONAL_CMAKE_ARGS}
+  BUILD_ALWAYS TRUE
 )
-externalproject_get_property(eccodes BINARY_DIR)
-set(eccodes_ROOT ${BINARY_DIR})
 
 externalproject_add(
   eckit
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/lib/eckit
-  INSTALL_COMMAND ""
+  SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/eckit"
+  BINARY_DIR "${PROJECT_BINARY_DIR}/lib/eckit"
+  INSTALL_DIR "${FINAL_DIR}"
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DENABLE_TESTS=OFF ${ADDITIONAL_CMAKE_ARGS}
+  BUILD_ALWAYS TRUE
 )
-externalproject_get_property(eckit BINARY_DIR)
-set(eckit_ROOT ${BINARY_DIR})
 
 externalproject_add(
   metkit
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/lib/metkit
-  INSTALL_COMMAND ""
+  SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/metkit"
+  BINARY_DIR "${PROJECT_BINARY_DIR}/lib/metkit"
+  INSTALL_DIR "${FINAL_DIR}"
   DEPENDS eccodes eckit
-  CMAKE_ARGS -Deccodes_ROOT=${eccodes_ROOT} -Deckit_ROOT=${eckit_ROOT}
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -Deccodes_ROOT=${FINAL_DIR} -Deckit_ROOT=${FINAL_DIR}
+             ${ADDITIONAL_CMAKE_ARGS}
+  BUILD_ALWAYS TRUE
 )
-externalproject_get_property(metkit BINARY_DIR)
-set(metkit_ROOT ${BINARY_DIR})
 
 externalproject_add(
   fdb
-  SOURCE_DIR ${CMAKE_SOURCE_DIR}/lib/fdb
-  INSTALL_COMMAND ""
+  SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/fdb"
+  BINARY_DIR "${PROJECT_BINARY_DIR}/lib/fdb"
+  INSTALL_DIR "${FINAL_DIR}"
   DEPENDS eccodes eckit metkit
-  CMAKE_ARGS -Deccodes_ROOT=${eccodes_ROOT} -Deckit_ROOT=${eckit_ROOT} -Dmetkit_ROOT=${metkit_ROOT}
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -Deccodes_ROOT=${FINAL_DIR} -Deckit_ROOT=${FINAL_DIR}
+             ${ADDITIONAL_CMAKE_ARGS} -Dmetkit_ROOT=${FINAL_DIR}
+  BUILD_ALWAYS TRUE
 )
+
+externalproject_add(
+  cdo
+  SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/cdo"
+  BINARY_DIR "${PROJECT_BINARY_DIR}/lib/cdo"
+  INSTALL_DIR "${FINAL_DIR}"
+  DEPENDS eccodes fdb
+  CONFIGURE_COMMAND autoreconf -i <SOURCE_DIR>
+  COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-eccodes=${FINAL_DIR} --with-fdb5=${FINAL_DIR}
+          CFLAGS=${ADDITIONAL_CFLAGS}
+  BUILD_ALWAYS TRUE
+)
+
+install(DIRECTORY ${FINAL_DIR}/bin DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(DIRECTORY ${FINAL_DIR}/include DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(DIRECTORY ${FINAL_DIR}/lib DESTINATION ${CMAKE_INSTALL_PREFIX})
