@@ -1,0 +1,3 @@
+[ class, expver, stream, domain?
+    [ levtype, levelist?, type?, param, step?
+        [ date, time ]]]

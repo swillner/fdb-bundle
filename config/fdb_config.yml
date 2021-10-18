@@ -1,0 +1,8 @@
+type: local
+writable: true
+visitable: true
+statistics: true
+spaces:
+  - handler: Default
+    roots:
+      - path: /tmp/fdb_root
