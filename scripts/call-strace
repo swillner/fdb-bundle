@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+import argparse
+import io
+import math
+import re
+import subprocess
+import sys
+
+import numpy as np
+import yaml
+
+r_line = re.compile(r"([0-9]+ )?([^\( ]+)(\((.*?)\) *= *(-?[0-9\?]+)( +[^ ]+)? ?)?.*")
+r_so = re.compile(r".*\.so((\.[0-9]+)|\.cache)*$")
+
+
+def parse_line(line):
+    m = r_line.match(line)
+    if m:
+        return tuple(m.group(i) for i in [2, 4, 5, 6])
+    raise RuntimeError(f"Cannot parse line '{line}'")
+
+
+def show_opens(stream, show_libs=False):
+    for line in stream:
+        name, arguments, result, error = parse_line(line)
+        if name == "openat":
+            filename = yaml.safe_load("[{}]".format(arguments))[1]
+            if r_so.match(filename) and not show_libs:
+                continue
+            fd = int(result)
+            if fd >= 0:
+                sys.stderr.write(filename)
+            else:
+                sys.stderr.write(filename, error)
+            sys.stderr.write("\n")
+
+
+def show_read_writes(stream, show_libs=False):
+    files = {}
+    open_files = {
+        1: {"name": "/dev/stdout", "reads": [], "writes": [], "pos": 0},
+        2: {"name": "/dev/stderr", "reads": [], "writes": [], "pos": 0},
+    }
+
+    for line in stream:
+        name, arguments, result, error = parse_line(line)
+        if name == "openat":
+            filename = yaml.safe_load("[{}]".format(arguments))[1]
+            fd = int(result)
+            if fd >= 0:
+                if filename not in files:
+                    files[filename] = {
+                        "name": filename,
+                        "reads": [],
+                        "writes": [],
+                    }
+                f = files[filename]
+                for i in ["reads", "writes"]:
+                    if f[i]:
+                        f[i].append("reopen")
+                f["pos"] = 0
+                open_files[fd] = f
+            else:
+                files[filename] = {"name": filename, "error": error}
+        elif name in ["read", "write"]:
+            fd = int(arguments.split(",")[0])
+            count = int(arguments.split(",")[-1])
+            f = open_files[fd]
+            f[f"{name}s"].append((f["pos"], int(result), count))
+            f["pos"] += int(result)
+        elif name == "lseek":
+            s = arguments.split(",")
+            fd, offset, whence = int(s[0]), int(s[1]), s[2].strip()
+            f = open_files[fd]
+            if whence == "SEEK_SET":
+                f["pos"] = offset
+            elif whence == "SEEK_CUR":
+                f["pos"] += offset
+            elif whence == "SEEK_END":
+                f["pos"] = -offset - 1
+            else:
+                raise RuntimeError(f"Unknown lseek whence '{whence}'")
+        elif name == "close":
+            fd = int(arguments)
+            del open_files[fd]
+        elif name[:4] == "open":
+            raise RuntimeError(f"Unhandled open in '{line}'")
+
+    for _, f in sorted(files.items(), key=lambda i: i[0]):
+        if r_so.match(f["name"]) and not show_libs:
+            continue
+        if "error" in f:
+            sys.stderr.write(f'{f["name"]}\n    error: {f["error"]}\n')
+            continue
+        if not f["reads"] and not f["writes"]:
+            continue
+        sys.stderr.write(f'{f["name"]}\n')
+        for i in ["reads", "writes"]:
+            if f[i]:
+                sys.stderr.write(f"    {i}:\n")
+                n = math.ceil(
+                    np.log10(
+                        np.max(np.asarray([j for j in f[i] if isinstance(j, tuple)]))
+                    )
+                )
+                for o in f[i]:
+                    if o == "reopen":
+                        sys.stderr.write("        -- reopen --\n")
+                    else:
+                        p, c, num = o
+                        r = "" if num == 1 else f"({num})"
+                        sys.stderr.write(f"        {p:>{n}} + {c:>{n}}{r}\n")
+
+
+def main():
+    if "--" in sys.argv:
+        i = sys.argv.index("--")
+        args = sys.argv[1:i]
+        call = sys.argv[i + 1 :]
+    else:
+        args = sys.argv[1:]
+        call = []
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", type=str, choices=["run", "readswrites", "opens"])
+    parser.add_argument("--show-libs", action="store_true")
+    parser.add_argument("other", type=str, nargs="*")
+    pargs = parser.parse_args(args)
+
+    if pargs.command == "run":
+        parser = argparse.ArgumentParser(parents=[parser], add_help=False)
+        parser.add_argument("outfile", type=str)
+        parser.parse_args(args, pargs)
+        subprocess.check_call(["strace", "-f", "-o", pargs.outfile, "--"] + call)
+    elif pargs.command == "readswrites":
+        if call:
+            with subprocess.Popen(
+                ["strace", "-f", "--"] + call, stderr=subprocess.PIPE
+            ) as p:
+                show_read_writes(io.TextIOWrapper(p.stderr), pargs.show_libs)
+        else:
+            parser = argparse.ArgumentParser(parents=[parser], add_help=False)
+            parser.add_argument("infile", type=str)
+            parser.parse_args(args, pargs)
+            with open(pargs.infile, "r") as f:
+                show_read_writes(f, pargs.show_libs)
+    elif pargs.command == "opens":
+        if call:
+            with subprocess.Popen(
+                ["strace", "-f", "--"] + call, stderr=subprocess.PIPE
+            ) as p:
+                show_opens(io.TextIOWrapper(p.stderr), pargs.show_libs)
+        else:
+            parser = argparse.ArgumentParser(parents=[parser], add_help=False)
+            parser.add_argument("infile", type=str)
+            parser.parse_args(args, pargs)
+            with open(pargs.infile, "r") as f:
+                show_opens(f, pargs.show_libs)
+
+
+if __name__ == "__main__":
+    main()

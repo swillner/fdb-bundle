@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+import argparse
+import re
+import subprocess
+import sys
+
+NOTRACE = [
+    ".*::.*Lock::.*",
+    ".*::.*Mutex::.*",
+    ".*::Assert",
+    ".*::attach",
+    ".*::clone",
+    ".*::dettach",
+    ".*::instance",
+    ".*::lock",
+    ".*::unlock",
+    ".*::~.*",
+    ".*Iterator::next",
+    "^_",
+    "eckit::Configuration::lookUp",
+    "eckit::LocalPathName::parsePath",
+    "eckit::Log::.*",
+    "eckit::NonCopyable::.*",
+    "eckit::Queue::checkInterrupt",
+    "eckit::StreamParser::.*",
+    "eckit::YAMLParser.*",
+    "eckit::expandTilde",
+    "eckit::rebuild_path",
+    "eckit::tidy_path_tokens",
+    "eckit::tokenizeInsert",
+    "std::.*::begin",
+    "std::.*::clear",
+    "std::.*::empty",
+    "std::.*::end",
+    "std::.*::reserve",
+    "std::.*::size",
+    "std::.*_ptr::.*",
+    "std::.*inserter",
+    "std::.*operator^<.*",
+    "std::_Rb_tree::.*",
+    "std::allocator.*",
+    "std::copy",
+    "std::deque::~?deque",
+    "std::distance",
+    "std::forward",
+    "std::get",
+    "std::map::~?map",
+    "std::move",
+    "std::mutex::.*",
+    "std::operator.*",
+    "std::pair::~?pair",
+    "std::set::~?set",
+    "std::swap",
+    "std::unique_lock",
+    "std::unique_lock.*",
+    "std::vector::~?vector",
+    "operator new",
+    # maybe:
+    "std::deque::.*",
+    "std::map::.*",
+    "std::pair::.*",
+    "std::queue::.*",
+    "std::set::.*",
+    "std::tuple::.*",
+    "std::vector::.*",
+    # must not:
+    # "eckit::ChannelBuffer::sync",
+]
+
+r1 = re.compile(
+    r'std::__cxx11::basic_string::_M_construct\((0x[0-9a-f]+), "(.*)", ".*"\)'
+)
+r2 = re.compile(r"( *}( = .*)?) /\* .* \*/")
+
+
+strings = {}
+indent = 0
+stack = [{"items": []}]
+
+
+def print_line(l):
+    global indent
+    if l[0] == "}":
+        indent -= 1
+    sys.stderr.write("  " * indent)
+    sys.stderr.write(l)
+    sys.stderr.write("\n")
+    if l[-1] == "{":
+        indent += 1
+
+
+def add_line(l):
+    if l[0] == "}":
+        stack.pop()
+        return
+    new = {
+        "name": l[:-2]
+        .replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\t", "\\t")
+        .replace(chr(1), "\\\\1")
+        .replace(chr(2), "\\\\2")
+        .replace(chr(127), "\\\\127")
+        .replace(chr(16), "\\\\16"),
+        "items": [],
+    }
+    stack[-1]["items"].append(new)
+    if l[-1] == "{":
+        stack.append(new)
+
+
+def parse_lines(stream, handle_line):
+    for line in stream:
+        l = line.decode("ascii", errors="backslashreplace").strip()
+        if l[0] == "#":
+            continue
+        m = r1.match(l)
+        if m:
+            strings[m.group(1)] = m.group(2)
+            continue
+        if "::_" in l:
+            continue
+        m = r2.match(l)
+        if m:
+            l = m.group(1) + "\n"
+        for k, v in strings.items():
+            l = l.replace(k, f'"{v}"')
+        l = l.strip()
+        handle_line(l)
+
+
+def parse_to_ncdu(stream):
+    parse_lines(stream, add_line)
+
+    def tojson(i, recursive=True):
+        if not i["items"] or not recursive:
+            return f'\n{{"name": "{i["name"]}", "dsize": 1}}'
+        return (
+            "\n["
+            + f'{{"name": "{i["name"]}"}},'
+            + ",".join(tojson(j) for j in i["items"])
+            + "]"
+        )
+
+    with subprocess.Popen(
+        (
+            "ncdu",
+            "-f-",
+            "--si",
+        ),
+        stdin=subprocess.PIPE,
+    ) as p:
+        p.stdin.write(b"[1,1,{},[")
+        p.stdin.write(b'{"name": "prog"},')
+        p.stdin.write(",".join(tojson(i) for i in stack[0]["items"]).encode("utf8"))
+        p.stdin.write(b"]]")
+        p.stdin.close()
+
+
+def main():
+    if "--" in sys.argv:
+        i = sys.argv.index("--")
+        args = sys.argv[1:i]
+        call = sys.argv[i + 1 :]
+    else:
+        args = sys.argv[1:]
+        call = []
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("command", type=str, choices=["run", "show", "ncdu"])
+    parser.add_argument("other", type=str, nargs="*")
+    pargs = parser.parse_args(args)
+
+    if pargs.command == "run":
+        subprocess.check_call(["uftrace", "record", "-A", ".", "-R", ".", "--"] + call)
+    else:
+        with subprocess.Popen(
+            ["uftrace", "-f", "none", "--no-pager"]
+            + (["live"] if call else ["replay"])
+            + [f"--notrace={i}" for i in NOTRACE]
+            + (["--"] + call if call else []),
+            stdout=subprocess.PIPE,
+        ) as p:
+            if pargs.command == "ncdu":
+                parse_to_ncdu(p.stdout)
+            else:
+                parse_lines(p.stdout, print_line)
+
+
+if __name__ == "__main__":
+    main()
