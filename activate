@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# must be sourced by the current shell
+
+deactivate() {
+    export ECCODES_DEFINITION_PATH="$_OLD_FDB_BUNDLE_ECCODES_DEFINITION_PATH"
+    export ECCODES_SAMPLES_PATH="$_OLD_FDB_BUNDLE_ECCODES_SAMPLES_PATH"
+    export FDB5_CONFIG_FILE="$_OLD_FDB_BUNDLE_FDB5_CONFIG_FILE"
+    export FDB_SCHEMA_FILE="$_OLD_FDB_BUNDLE_FDB_SCHEMA_FILE"
+    export LD_LIBRARY_PATH="$_OLD_FDB_BUNDLE_LD_LIBRARY_PATH"
+    export PATH="$_OLD_FDB_BUNDLE_PATH"
+    export PS1="$_OLD_FDB_BUNDLE_PS1"
+    unset -f deactivate
+}
+
+FDB_BUNDLE_DIR="$(cd -- "$(dirname -- "$0")" >/dev/null && pwd)"
+
+_OLD_FDB_BUNDLE_ECCODES_DEFINITION_PATH="$ECCODES_DEFINITION_PATH"
+export ECCODES_DEFINITION_PATH="$FDB_BUNDLE_DIR/definitions:$FDB_BUNDLE_DIR/lib/eccodes/definitions"
+
+_OLD_FDB_BUNDLE_ECCODES_SAMPLES_PATH="$ECCODES_SAMPLES_PATH"
+export ECCODES_SAMPLES_PATH="$FDB_BUNDLE_DIR/lib/eccodes/samples"
+
+_OLD_FDB_BUNDLE_PS1="$PS1"
+export PS1="(fdb-bundle) $PS1"
+
+_OLD_FDB_BUNDLE_PATH="$PATH"
+export PATH="$FDB_BUNDLE_DIR/build/final/bin:$FDB_BUNDLE_DIR/scripts:$PATH"
+
+_OLD_FDB_BUNDLE_LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$FDB_BUNDLE_DIR/build/final/lib:$LD_LIBRARY_PATH"
+
+_OLD_FDB_BUNDLE_FDB5_CONFIG_FILE="$FDB5_CONFIG_FILE"
+export FDB5_CONFIG_FILE="$FDB_BUNDLE_DIR/config/fdb_config.yml"
+
+_OLD_FDB_BUNDLE_FDB_SCHEMA_FILE="$FDB_SCHEMA_FILE"
+export FDB_SCHEMA_FILE="$FDB_BUNDLE_DIR/config/fdb_schema"
+
+mkdir -p /tmp/fdb_root
