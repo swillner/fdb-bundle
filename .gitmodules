@@ -15,4 +15,4 @@
 	url = https://github.com/ecmwf/fdb
 [submodule "lib/cdo"]
 	path = lib/cdo
-	url = git@gitlab.dkrz.de:mpim-sw/cdo.git
+	url = git@gitlab.dkrz.de:across/cdo.git
