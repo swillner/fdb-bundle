@@ -66,6 +66,23 @@ externalproject_add(
   BUILD_ALWAYS TRUE
 )
 
+set(CDO_LDFLAGS
+    "-Wl,--copy-dt-needed-entries" # TODO only for development
+    CACHE STRING "additional LDFLAGS for cdo"
+)
+set(CDO_WITH_HDF5
+    "yes"
+    CACHE STRING "yes, no, or location of HDF5 library"
+)
+set(CDO_WITH_NETCDF
+    "yes"
+    CACHE STRING "yes, no, or location of NetCDF library"
+)
+set(CDO_WITH_SZLIB
+    "yes"
+    CACHE STRING "yes, no, or location of szlib"
+)
+
 externalproject_add(
   cdo
   SOURCE_DIR "${PROJECT_SOURCE_DIR}/lib/cdo"
@@ -73,8 +90,10 @@ externalproject_add(
   INSTALL_DIR "${FINAL_DIR}"
   DEPENDS eccodes fdb
   CONFIGURE_COMMAND autoreconf -i <SOURCE_DIR>
-  COMMAND <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-eccodes=${FINAL_DIR} --with-fdb5=${FINAL_DIR}
-          CFLAGS=${ADDITIONAL_CFLAGS}
+  COMMAND
+    <SOURCE_DIR>/configure --prefix=<INSTALL_DIR> --with-eccodes=${FINAL_DIR} --with-fdb5=${FINAL_DIR}
+    --with-netcdf=${CDO_WITH_NETCDF} --with-hdf=${CDO_WITH_HDF5} --with-szlib=${CDO_WITH_SZLIB}
+    CFLAGS=${ADDITIONAL_CFLAGS} LDFLAGS=${CDO_LDFLAGS}
   BUILD_ALWAYS TRUE
 )
 
