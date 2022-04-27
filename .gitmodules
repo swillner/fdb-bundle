@@ -13,6 +13,3 @@
 [submodule "lib/fdb"]
 	path = lib/fdb
 	url = https://github.com/ecmwf/fdb
-[submodule "lib/cdo"]
-	path = lib/cdo
-	url = git@gitlab.dkrz.de:across/cdo.git
