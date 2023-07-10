@@ -8,6 +8,21 @@ include(ExternalProject)
 
 set(FINAL_DIR ${PROJECT_BINARY_DIR}/final)
 
+  if(DEFINED ENV{LIBRARY_PATH})
+    string(REPLACE ":" ";" LIBRARY_PATH $ENV{LIBRARY_PATH})
+    set(CMAKE_LIBRARY_PATH
+        ${CMAKE_LIBRARY_PATH} ${LIBRARY_PATH}
+        PARENT_SCOPE
+    )
+  endif()
+  if(DEFINED ENV{LD_LIBRARY_PATH})
+    string(REPLACE ":" ";" LD_LIBRARY_PATH $ENV{LD_LIBRARY_PATH})
+    set(CMAKE_LIBRARY_PATH
+        ${CMAKE_LIBRARY_PATH} ${LD_LIBRARY_PATH}
+        PARENT_SCOPE
+    )
+  endif()
+
 set(CMAKE_BUILD_TYPE
     Profile
     CACHE STRING "Choose the type of build, options are: Debug Release RelWithDebInfo MinSizeRel Profile." FORCE
